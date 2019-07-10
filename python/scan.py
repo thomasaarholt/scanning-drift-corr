@@ -6,12 +6,14 @@ from scipy.stats import gaussian_kde
 import scipy.stats as st
 from dataclasses import dataclass
 
+
 def rot_matrix(theta):
     'Thanks Hamish'
     return np.array([
         [cosd(theta), -sind(theta)],
         [sind(theta), cosd(theta)]
-        ])
+    ])
+
 
 def sind(deg):
     return np.sin(np.deg2rad(deg))
@@ -41,17 +43,15 @@ class sMergeClass:
     pass
 
 
-
-
-
 def SPmerge01(data, scanAngles):
     import numpy as np
-    
+
     sMerge = sMergeClass()
 
     paddingScale = (1+1/4)
     sMerge.KDEsigma = 1/2  # - Smoothing between pixels for KDE.
-    sMerge.edgeWidth = 1/128  # - size of edge blending relative to input images.
+    # - size of edge blending relative to input images.
+    sMerge.edgeWidth = 1/128
     # Initial linear search vector, relative to image size.
     sMerge.linearSearch = np.linspace(-0.02, 0.02, 1+2*2)
 
@@ -152,11 +152,10 @@ def SPmakeImage(sMerge, indImage=0):
 
     sig = np.reshape(acc, sMerge.imageSize)
     count = np.reshape(acc2, sMerge.imageSize)
-    plt.figure()
-    plt.imshow(sig)
-    plt.show()
+    # plt.figure()
+    # plt.imshow(sig)
+    # plt.show()
 
-    
     r = np.maximum(np.ceil(sMerge.KDEsigma*3), 5.0)
     # Just do gaussian smoothing instead?
     # sig = gaussian_filter(sig, 2)
@@ -169,9 +168,9 @@ def SPmakeImage(sMerge, indImage=0):
     sig[sub] = sig[sub] / count[sub]
     sMerge.imageTransform[indImage] = sig
 
-    plt.figure()
-    plt.imshow(sig)
-    plt.show()
+    # plt.figure()
+    # plt.imshow(sig)
+    # plt.show()
 
 
 #     % Apply KDE

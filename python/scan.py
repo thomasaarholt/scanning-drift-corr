@@ -1,6 +1,10 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.ndimage import gaussian_filter
+from scipy.signal import convolve2d
+from scipy.stats import gaussian_kde
+import scipy.stats as st
+from dataclasses import dataclass
 
 
 def sind(deg):
@@ -18,98 +22,111 @@ def hanningLocal(N):
     return Dim2Window
 
 
+def gkern(kernlen=21, nsig=3):
+    """Returns a 2D Gaussian kernel."""
+    lim = kernlen//2 + (kernlen % 2)/2
+    x = np.linspace(-lim, lim, kernlen+1)
+    kern1d = np.diff(st.norm.cdf(x))
+    kern2d = np.outer(kern1d, kern1d)
+    return kern2d/kern2d.sum()
+
+
+class sMergeClass:
+    pass
+
+
 def SPmerge01(data, scanAngles):
     import numpy as np
-    # 1.5;    # - padding amount for scaling of the output.
+    
+    sMerge = sMergeClass()
+
     paddingScale = (1+1/4)
-    KDEsigma = 1/2  # - Smoothing between pixels for KDE.
-    edgeWidth = 1/128  # - size of edge blending relative to input images.
+    sMerge.KDEsigma = 1/2  # - Smoothing between pixels for KDE.
+    sMerge.edgeWidth = 1/128  # - size of edge blending relative to input images.
     # Initial linear search vector, relative to image size.
-    linearSearch = np.linspace(-0.02, 0.02, 1+2*2)
+    sMerge.linearSearch = np.linspace(-0.02, 0.02, 1+2*2)
 
     # I have changed the convention here so that the number of images is the first axis, not the last
     # I am only supporting the case where the image input is a list / array of images
 
     data = np.array(data)
-    scanAngles = np.array(scanAngles)
+    sMerge.scanAngles = np.array(scanAngles)
     shape = np.array(data.shape)
-    imageSize = np.round(shape[1:]*paddingScale/4).astype(int)*4
-    numImages = len(scanAngles)
+    sMerge.imageSize = np.round(shape[1:]*paddingScale/4).astype(int)*4
+    sMerge.numImages = len(sMerge.scanAngles)
 
-    scanLines = np.zeros(shape)
-    scanOr = np.zeros([numImages, 2, shape[1]])
+    sMerge.scanLines = np.zeros(shape)
+    sMerge.scanOr = np.zeros([sMerge.numImages, 2, shape[1]])
 
-    scanDir = np.zeros([numImages, 2])
+    sMerge.scanDir = np.zeros([sMerge.numImages, 2])
 
-    imageTransform = scanLines.copy()
-    imageDensity = scanLines.copy()
+    sMerge.imageTransform = np.zeros((sMerge.numImages,) + tuple(sMerge.imageSize))
+    sMerge.imageDensity = np.zeros((sMerge.numImages,) + tuple(sMerge.imageSize))
 
-    scanLines[:] = data
+    sMerge.scanLines[:] = data
 
-    for a0 in range(numImages):
+    for a0 in range(sMerge.numImages):
 
         xy = np.column_stack([np.arange(1, shape[1]+1), np.ones(shape[1])])
         xy[:, 0] -= shape[1]/2
         xy[:, 1] -= shape[2]/2
 
         xy = np.array([
-            xy[:, 0]*cosd(scanAngles[a0])
-            - xy[:, 1]*sind(scanAngles[a0]),
-            xy[:, 1]*cosd(scanAngles[a0])
-            + xy[:, 0]*sind(scanAngles[a0]),
+            xy[:, 0]*cosd(sMerge.scanAngles[a0]) - xy[:, 1]*sind(sMerge.scanAngles[a0]),
+            xy[:, 1]*cosd(sMerge.scanAngles[a0]) + xy[:, 0]*sind(sMerge.scanAngles[a0]),
         ])
 
-        xy[0] += imageSize[0]/2
-        xy[1] += imageSize[1]/2
+        xy[0] += sMerge.imageSize[0]/2
+        xy[1] += sMerge.imageSize[1]/2
         xy[0] -= xy[0, 0] % 1
         xy[1] -= xy[1, 0] % 1
-        scanOr[a0] = xy
+        sMerge.scanOr[a0] = xy
 
-        scanDir[a0] = [cosd(scanAngles[a0] + 90), sind(scanAngles[a0] + 90)]
+        sMerge.scanDir[a0] = [cosd(sMerge.scanAngles[a0] + 90), sind(sMerge.scanAngles[a0] + 90)]
 
-    linearSearch = linearSearch * scanLines.shape[1]
-    yDrift, xDrift = np.meshgrid(linearSearch, linearSearch)
-    linearSearchScore1 = np.zeros(len(linearSearch))
-    inds = np.linspace(-0.5, 0.5, scanLines.shape[1]).T
+    sMerge.linearSearch = sMerge.linearSearch * sMerge.scanLines.shape[1]
+    yDrift, xDrift = np.meshgrid(sMerge.linearSearch, sMerge.linearSearch)
+    sMerge.linearSearchScore1 = np.zeros(len(sMerge.linearSearch))
+    inds = np.linspace(-0.5, 0.5, sMerge.scanLines.shape[1]).T
 
-    N = scanLines.shape
+    N = sMerge.scanLines.shape
 
     TwoDHanningWindow = hanningLocal(N[1])*hanningLocal(N[2]).T
-    padamount = imageSize - N[1:]
+    padamount = sMerge.imageSize - N[1:]
     pada, padb = padamount
-    paddedarray = np.pad(TwoDHanningWindow, ((0, pada),
-                                             (0, padb)), mode='constant', constant_values=0)
+    paddedarray = np.pad(
+        TwoDHanningWindow,
+        ((0, pada), (0, padb)),
+        mode='constant', constant_values=0)
 
     w2 = np.roll(paddedarray, np.round(padamount/2).astype(int))
 
-    for a0 in range(len(linearSearch)):
-        for a1 in range(len(linearSearch)):
+    for a0 in range(len(sMerge.linearSearch)):
+        for a1 in range(len(sMerge.linearSearch)):
             xyShift = [inds*xDrift[a0, a1], inds*yDrift[a0, a1]]
 
-            scanOr[:2] += np.tile(xyShift, [2, 1, 1])
-            SPmakeImage(scanLines, imageSize, KDEsigma, scanOr, scanDir, 0)
+            sMerge.scanOr[:2] += np.tile(xyShift, [2, 1, 1])
+            SPmakeImage(sMerge, 0)
             break
         break
 
 
-def SPmakeImage(scanLines, imageSize, KDEsigma, scanOr, scanDir, indImage=0):
-        # SPmakeImage
+def SPmakeImage(sMerge, indImage=0):
+    indLines = np.ones(sMerge.scanLines.shape[2], dtype=bool)
 
-    indLines = np.ones(scanLines.shape[2], dtype=int)
-
-    # Remove the plus 1s below
     t = np.tile(
-        np.arange(0+1, scanLines.shape[2]+1), [indLines.sum(dtype=int), 1])
-    x0 = np.tile(scanOr[indImage, 0, indLines.astype(bool)], [
-                 1, scanLines.shape[2]])
-    y0 = np.tile(scanOr[indImage, 1, indLines.astype(bool)], [
-                 1, scanLines.shape[2]])
-    # print(scanDir.shape)
-    xInd = x0.flatten() + t.flatten()*scanDir[indImage, 0]
-    yInd = y0.flatten() + t.flatten()*scanDir[indImage, 1]
+        np.arange(1, sMerge.scanLines.shape[2]+1), reps=[indLines.sum(), 1])
+    xtile = sMerge.scanOr[indImage, 0, indLines]
+    ytile = sMerge.scanOr[indImage, 1, indLines]
+    x0 = np.tile(xtile, reps=[sMerge.scanLines.shape[2], 1])
+    y0 = np.tile(ytile, reps=[sMerge.scanLines.shape[2], 1])
 
-    xInd2 = np.maximum(np.minimum(xInd, imageSize[0]-1), 1)
-    yInd2 = np.maximum(np.minimum(yInd, imageSize[1]-1), 1)
+    # Might need to remove .T on this line only
+    xInd = x0.T.flatten() + t.flatten()*sMerge.scanDir[indImage, 0]
+    yInd = y0.T.flatten() + t.flatten()*sMerge.scanDir[indImage, 1]
+
+    xInd2 = np.clip(xInd, 0, sMerge.imageSize[0]-1)
+    yInd2 = np.clip(yInd, 0, sMerge.imageSize[1]-1)
 
     xIndF = np.floor(xInd2).astype(int)
     yIndF = np.floor(yInd2).astype(int)
@@ -119,41 +136,46 @@ def SPmakeImage(scanLines, imageSize, KDEsigma, scanOr, scanDir, indImage=0):
     dy = yInd-yIndF
     w1 = np.array([(1-dx)*(1-dy), dx*(1-dy), (1-dx)*dy, dx*dy])
 
-    # print(xAll.dtype)
-    # print(imageSize.dtype)
+    indAll = np.ravel_multi_index((xAll, yAll), sMerge.imageSize)
+    sL = sMerge.scanLines[indImage, :, indLines].T
 
-   # breakpoint()
+    weights = (w1*sL.flatten()).flatten()
+    acc = np.bincount(
+        indAll.flatten(),
+        weights=weights,
+        minlength=np.prod(sMerge.imageSize))
 
-    indAll = np.ravel_multi_index((xAll, yAll), imageSize)
-    sL = scanLines[indImage, :, indLines.astype(bool)].T
-    #indAll = sub2ind(sMerge.imageSize,xAll,yAll);
+    acc2 = np.bincount(
+        indAll.flatten(), weights=weights, minlength=np.prod(sMerge.imageSize))
 
-    weights = np.array([w1[0]*sL.flatten(), w1[1]*sL.flatten(),
-                        w1[2]*sL.flatten(), w1[3]*sL.flatten()])
+    sig = np.reshape(acc, sMerge.imageSize)
+    count = np.reshape(acc2, sMerge.imageSize)
+
+    
+    r = np.maximum(np.ceil(sMerge.KDEsigma*3), 5.0)
+    # Just do gaussian smoothing instead?
+    # sig = gaussian_filter(sig, 2)
+    # count = gaussian_filter(count, sMerge.KDEsigma)
+    kern = gkern(11, 0.5)
+    sig = convolve2d(sig, kern, 'same')
+    count = convolve2d(count, kern, 'same')
     breakpoint()
-    accumarray = np.bincount(
-        indAll.flatten(), weights=weights.flatten(), minlength=np.prod(imageSize))
-    sig = np.reshape(accumarray, imageSize)
 
-    weights2 = np.array([w1[0], w1[1], w1[2], w1[3]])
-    accumarray2 = np.bincount(
-        indAll.flatten(), weights=weights2.flatten(), minlength=np.prod(imageSize))
+    sub = count > 0
+    sig[sub] = sig[sub] / count[sub]
+    sMerge.imageTransform[indImage] = sig
 
-    count = np.reshape(accumarray2, imageSize)
-
-    r = np.maximum(np.ceil(KDEsigma*3), 5.0)
     plt.figure()
     plt.imshow(sig)
     plt.show()
-    # gaussian_filter()
 
 
 #     % Apply KDE
-#     r = max(ceil(sMerge.KDEsigma*3),5);
-#     sm = fspecial('gaussian',2*r+1,sMerge.KDEsigma);
+#     r = max(ceil(sMerge.sMerge.KDEsigma*3),5);
+#     sm = fspecial('gaussian',2*r+1,sMerge.sMerge.KDEsigma);
 #     sm = sm / sum(sm(:));
 #     sig = conv2(sig,sm,'same');
 #     count = conv2(count,sm,'same');
 #     sub = count > 0;
 #     sig(sub) = sig[sub] / count[sub];
-#     sMerge.imageTransform(:,:,indImage) = sig;
+#     sMerge.sMerge.imageTransform(:,:,indImage) = sig;

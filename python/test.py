@@ -9,7 +9,10 @@ f = h5py.File(file, mode='r')
 img1 = f['image00deg'][:]
 img2 = f['image90deg'][:]
 img3 = f['imageIdeal'][:]
+
 imgs = [img1, img2, img1]
+
+#imgs = [img[:, :-5] for img in imgs]
 scanAngles = [0, 90, 0]
 
 # fig, AX = plt.subplots(ncols=3, figsize=(15, 5))

@@ -6,6 +6,12 @@ from scipy.stats import gaussian_kde
 import scipy.stats as st
 from dataclasses import dataclass
 
+def rot_matrix(theta):
+    'Thanks Hamish'
+    return np.array([
+        [cosd(theta), -sind(theta)],
+        [sind(theta), cosd(theta)]
+        ])
 
 def sind(deg):
     return np.sin(np.deg2rad(deg))
@@ -35,6 +41,9 @@ class sMergeClass:
     pass
 
 
+
+
+
 def SPmerge01(data, scanAngles):
     import numpy as np
     
@@ -50,39 +59,32 @@ def SPmerge01(data, scanAngles):
     # I am only supporting the case where the image input is a list / array of images
 
     data = np.array(data)
-    sMerge.scanAngles = np.array(scanAngles)
     shape = np.array(data.shape)
+
+    sMerge.scanAngles = np.array(scanAngles)
     sMerge.imageSize = np.round(shape[1:]*paddingScale/4).astype(int)*4
     sMerge.numImages = len(sMerge.scanAngles)
-
     sMerge.scanLines = np.zeros(shape)
     sMerge.scanOr = np.zeros([sMerge.numImages, 2, shape[1]])
-
     sMerge.scanDir = np.zeros([sMerge.numImages, 2])
 
-    sMerge.imageTransform = np.zeros((sMerge.numImages,) + tuple(sMerge.imageSize))
-    sMerge.imageDensity = np.zeros((sMerge.numImages,) + tuple(sMerge.imageSize))
+    padded_shape = (sMerge.numImages,) + tuple(sMerge.imageSize)
+    sMerge.imageTransform = np.zeros(padded_shape)
+    sMerge.imageDensity = np.zeros(padded_shape)
 
     sMerge.scanLines[:] = data
 
     for a0 in range(sMerge.numImages):
+        theta = sMerge.scanAngles[a0]
+        xy = np.stack([np.arange(0, shape[1]), np.ones(shape[1])])
+        xy -= (shape[1:]/2)[:, None]
 
-        xy = np.column_stack([np.arange(1, shape[1]+1), np.ones(shape[1])])
-        xy[:, 0] -= shape[1]/2
-        xy[:, 1] -= shape[2]/2
+        xy = rot_matrix(theta) @ xy
 
-        xy = np.array([
-            xy[:, 0]*cosd(sMerge.scanAngles[a0]) - xy[:, 1]*sind(sMerge.scanAngles[a0]),
-            xy[:, 1]*cosd(sMerge.scanAngles[a0]) + xy[:, 0]*sind(sMerge.scanAngles[a0]),
-        ])
-
-        xy[0] += sMerge.imageSize[0]/2
-        xy[1] += sMerge.imageSize[1]/2
-        xy[0] -= xy[0, 0] % 1
-        xy[1] -= xy[1, 0] % 1
+        xy += (sMerge.imageSize/2)[:, None]
+        xy -= (xy[:, 0] % 1)[:, None]
         sMerge.scanOr[a0] = xy
-
-        sMerge.scanDir[a0] = [cosd(sMerge.scanAngles[a0] + 90), sind(sMerge.scanAngles[a0] + 90)]
+        sMerge.scanDir[a0] = [cosd(theta + 90), sind(theta + 90)]
 
     sMerge.linearSearch = sMerge.linearSearch * sMerge.scanLines.shape[1]
     yDrift, xDrift = np.meshgrid(sMerge.linearSearch, sMerge.linearSearch)
@@ -150,6 +152,9 @@ def SPmakeImage(sMerge, indImage=0):
 
     sig = np.reshape(acc, sMerge.imageSize)
     count = np.reshape(acc2, sMerge.imageSize)
+    plt.figure()
+    plt.imshow(sig)
+    plt.show()
 
     
     r = np.maximum(np.ceil(sMerge.KDEsigma*3), 5.0)
@@ -159,7 +164,6 @@ def SPmakeImage(sMerge, indImage=0):
     kern = gkern(11, 0.5)
     sig = convolve2d(sig, kern, 'same')
     count = convolve2d(count, kern, 'same')
-    breakpoint()
 
     sub = count > 0
     sig[sub] = sig[sub] / count[sub]

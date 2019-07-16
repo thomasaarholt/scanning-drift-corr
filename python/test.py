@@ -25,5 +25,3 @@ scanAngles = [0, 90, 0]
 # plt.show()
 
 SPmerge01(imgs, scanAngles)
-
-print('hi')

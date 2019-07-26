@@ -37,6 +37,10 @@ sMerge.scanDir = zeros(sMerge.numImages,2);
 sMerge.imageTransform = zeros(sMerge.imageSize(1),sMerge.imageSize(2),sMerge.numImages);
 sMerge.imageDensity = zeros(sMerge.imageSize(1),sMerge.imageSize(2),sMerge.numImages);
 
+
+fileID = fopen('results.txt','w');
+fclose(fileID);
+
 % Generate all initial variables 
 for a0 = 1:sMerge.numImages
     % Raw images
@@ -79,7 +83,9 @@ if flagReportProgress == true
     reverseStr = ''; % initialize console message piece
 end
 
-
+fileID = fopen('results.txt','a');
+fprintf(fileID, 'Linear1\n');
+fclose(fileID);
 % First linear alignment, search over possible linear drift vectors.
 sMerge.linearSearch = sMerge.linearSearch * size(sMerge.scanLines,1);
 [yDrift,xDrift] = meshgrid(sMerge.linearSearch);
@@ -119,7 +125,9 @@ for a0 = 1:length(sMerge.linearSearch)
     end
 end
 
-
+fileID = fopen('results.txt','a');
+fprintf(fileID, 'Linear2\n');
+fclose(fileID);
 % Second linear alignment, refine possible linear drift vectors.
 [~,ind] = max(sMerge.linearSearchScore1(:));
 [xInd,yInd] = ind2sub(size(sMerge.linearSearchScore1),ind);
@@ -189,6 +197,9 @@ sMerge.xyLinearDrift = [xDrift(xInd) yDrift(yInd)];
 
 
 % Apply linear drift to all images
+fileID = fopen('results.txt','a');
+fprintf(fileID, 'Line1\n');
+fclose(fileID);
 xyShift = [inds*sMerge.xyLinearDrift(1) inds*sMerge.xyLinearDrift(2)];
 for a0 = 1:sMerge.numImages
     sMerge.scanOr(:,:,a0) = sMerge.scanOr(:,:,a0) + xyShift;
@@ -212,6 +223,9 @@ end
 dxy(:,1) = dxy(:,1) - mean(dxy(:,1));
 dxy(:,2) = dxy(:,2) - mean(dxy(:,2));
 % Apply alignments and regenerate images
+fileID = fopen('results.txt','a');
+fprintf(fileID, 'Linear2\n');
+fclose(fileID);
 for a0 = 1:sMerge.numImages
     sMerge.scanOr(:,1,a0) = sMerge.scanOr(:,1,a0) + dxy(a0,1);
     sMerge.scanOr(:,2,a0) = sMerge.scanOr(:,2,a0) + dxy(a0,2);
@@ -229,35 +243,35 @@ mask = dens>0.5;
 imagePlot = imagePlot - mean(imagePlot(mask));
 imagePlot = imagePlot / sqrt(mean(imagePlot(mask).^2));
 
-figure(1)
-clf
-imagesc(imagePlot)
-hold on
-cvals = [1 0 0;
-    0 .7 0;
-    0 .6 1;
-    1 .7 0;
-    1 0 1;
-    0 0 1];
-for a0 = 1:sMerge.numImages
-    scatter(sMerge.scanOr(:,2,a0),sMerge.scanOr(:,1,a0),'marker','.',...
-        'sizedata',25,'markeredgecolor',cvals(mod(a0-1,size(cvals,1))+1,:))
-end
-scatter(sMerge.ref(2),sMerge.ref(1),...
-    'marker','+','sizedata',500,...
-    'markeredgecolor',[1 1 0],'linewidth',6)
-scatter(sMerge.ref(2),sMerge.ref(1),...
-    'marker','+','sizedata',500,...
-    'markeredgecolor','k','linewidth',2)
-hold off
-axis equal off
-colormap(gray(256))
-set(gca,'position',[0 0 1 1])
-caxis([-3 3])   % units of image RMS 
-
-if flagReportProgress == true
-    fprintf([reverseStr ' ']);
-end
+% figure(1)
+% clf
+% imagesc(imagePlot)
+% hold on
+% cvals = [1 0 0;
+%     0 .7 0;
+%     0 .6 1;
+%     1 .7 0;
+%     1 0 1;
+%     0 0 1];
+% for a0 = 1:sMerge.numImages
+%     scatter(sMerge.scanOr(:,2,a0),sMerge.scanOr(:,1,a0),'marker','.',...
+%         'sizedata',25,'markeredgecolor',cvals(mod(a0-1,size(cvals,1))+1,:))
+% end
+% scatter(sMerge.ref(2),sMerge.ref(1),...
+%     'marker','+','sizedata',500,...
+%     'markeredgecolor',[1 1 0],'linewidth',6)
+% scatter(sMerge.ref(2),sMerge.ref(1),...
+%     'marker','+','sizedata',500,...
+%     'markeredgecolor','k','linewidth',2)
+% hold off
+% axis equal off
+% colormap(gray(256))
+% set(gca,'position',[0 0 1 1])
+% caxis([-3 3])   % units of image RMS 
+% 
+% if flagReportProgress == true
+%     fprintf([reverseStr ' ']);
+% end
 end
 
 % function [Iscale] = scaleImage(I,intRange,sigmaLP)

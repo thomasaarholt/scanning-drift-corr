@@ -70,8 +70,12 @@ for a0 = 1:sMerge.numImages
         + xy(:,1)*sin(scanAngles(a0)*pi/180)];
     xy(:,1) = xy(:,1) + sMerge.imageSize(1)/2;
     xy(:,2) = xy(:,2) + sMerge.imageSize(2)/2;
-    xy(:,1) = xy(:,1) - mod(xy(1,1),1);
-    xy(:,2) = xy(:,2) - mod(xy(1,2),1);
+    
+    % I've removed the - mod bc error
+    xy(:,1) = xy(:,1); %- mod(xy(1,1),1);
+    % There is (I think) an error in the matlab code here, since xy(1,2)
+    % has a floating point error, making the mod = 1
+    xy(:,2) = xy(:,2); %- mod(xy(1,2),1); 
     sMerge.scanOr(:,:,a0) = xy;
 
     % Scan direction
@@ -205,27 +209,29 @@ for a0 = 1:sMerge.numImages
     sMerge.scanOr(:,:,a0) = sMerge.scanOr(:,:,a0) + xyShift;
     sMerge = SPmakeImage(sMerge,a0);
 end
-
+fileID = fopen('results.txt','a');
+fprintf(fileID, 'Line2\n');
+fclose(fileID);
 % Estimate initial alignment
 dxy = zeros(sMerge.numImages,2);
 G1 = fft2(w2.*sMerge.imageTransform(:,:,1));
 for a0 = 2:sMerge.numImages
     G2 = fft2(w2.*sMerge.imageTransform(:,:,a0));
     m = G1.*conj(G2);
-    Icorr = ifft2(sqrt(abs(m)).*exp(1i*angle(m)),'symmetric');
+    m2 = sqrt(abs(m));
+    euler = exp(1i*angle(m));
+    Icorr = ifft2(m2.*euler,'symmetric');
     [~,ind] = max(Icorr(:));
     [dx,dy] = ind2sub(size(Icorr),ind);
-    dx = mod(dx - 1 + size(Icorr,1)/2,size(Icorr,1)) - size(Icorr,1)/2;
-    dy = mod(dy - 1 + size(Icorr,2)/2,size(Icorr,2)) - size(Icorr,2)/2;
-    dxy(a0,:) = dxy(a0-1,:) + [dx dy];
+    dx2 = mod(dx - 1 + size(Icorr,1)/2,size(Icorr,1)) - size(Icorr,1)/2;
+    dy2 = mod(dy - 1 + size(Icorr,2)/2,size(Icorr,2)) - size(Icorr,2)/2;
+    dxy(a0,:) = dxy(a0-1,:) + [dx2 dy2];
     G1 = G2;
 end
 dxy(:,1) = dxy(:,1) - mean(dxy(:,1));
 dxy(:,2) = dxy(:,2) - mean(dxy(:,2));
 % Apply alignments and regenerate images
-fileID = fopen('results.txt','a');
-fprintf(fileID, 'Linear2\n');
-fclose(fileID);
+
 for a0 = 1:sMerge.numImages
     sMerge.scanOr(:,1,a0) = sMerge.scanOr(:,1,a0) + dxy(a0,1);
     sMerge.scanOr(:,2,a0) = sMerge.scanOr(:,2,a0) + dxy(a0,2);
@@ -243,35 +249,35 @@ mask = dens>0.5;
 imagePlot = imagePlot - mean(imagePlot(mask));
 imagePlot = imagePlot / sqrt(mean(imagePlot(mask).^2));
 
-% figure(1)
-% clf
-% imagesc(imagePlot)
-% hold on
-% cvals = [1 0 0;
-%     0 .7 0;
-%     0 .6 1;
-%     1 .7 0;
-%     1 0 1;
-%     0 0 1];
-% for a0 = 1:sMerge.numImages
-%     scatter(sMerge.scanOr(:,2,a0),sMerge.scanOr(:,1,a0),'marker','.',...
-%         'sizedata',25,'markeredgecolor',cvals(mod(a0-1,size(cvals,1))+1,:))
-% end
-% scatter(sMerge.ref(2),sMerge.ref(1),...
-%     'marker','+','sizedata',500,...
-%     'markeredgecolor',[1 1 0],'linewidth',6)
-% scatter(sMerge.ref(2),sMerge.ref(1),...
-%     'marker','+','sizedata',500,...
-%     'markeredgecolor','k','linewidth',2)
-% hold off
-% axis equal off
-% colormap(gray(256))
-% set(gca,'position',[0 0 1 1])
-% caxis([-3 3])   % units of image RMS 
-% 
-% if flagReportProgress == true
-%     fprintf([reverseStr ' ']);
-% end
+figure(1)
+clf
+imagesc(imagePlot)
+hold on
+cvals = [1 0 0;
+    0 .7 0;
+    0 .6 1;
+    1 .7 0;
+    1 0 1;
+    0 0 1];
+for a0 = 1:sMerge.numImages
+    scatter(sMerge.scanOr(:,2,a0),sMerge.scanOr(:,1,a0),'marker','.',...
+        'sizedata',25,'markeredgecolor',cvals(mod(a0-1,size(cvals,1))+1,:))
+end
+scatter(sMerge.ref(2),sMerge.ref(1),...
+    'marker','+','sizedata',500,...
+    'markeredgecolor',[1 1 0],'linewidth',6)
+scatter(sMerge.ref(2),sMerge.ref(1),...
+    'marker','+','sizedata',500,...
+    'markeredgecolor','k','linewidth',2)
+hold off
+axis equal off
+colormap(gray(256))
+set(gca,'position',[0 0 1 1])
+caxis([-3 3])   % units of image RMS 
+
+if flagReportProgress == true
+    fprintf([reverseStr ' ']);
+end
 end
 
 % function [Iscale] = scaleImage(I,intRange,sigmaLP)

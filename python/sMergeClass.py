@@ -52,14 +52,15 @@ class sMergeClass:
         for a0 in range(self.numImages):
             theta = self.scanAngles[a0]
             # Changing the following line from 0, shape[1] to +1 on both
-            # If xy is index value (not difference), then we probably want to 
+            # If xy is index value (not difference), then we probably want to
             # reduce them all by one compared to matlab version
-            xy = np.stack([np.arange(1, shape[1]+1), np.ones(shape[1])])
+            xy = np.stack([np.arange(shape[1]), np.zeros(shape[1])])
             xy -= (shape[1:]/2)[:, None]
 
-            xy = rot_matrix(theta) @ xy
+            # For two images at 0, 90 deg, the second one will swap the x and y indices and reverse the sign of the first axis.
+            xy2 = rot_matrix(theta) @ xy
 
             xy += (self.imageSize/2)[:, None]
-            xy -= (xy[:, 0] % 1)[:, None]
+            xy -= (xy[:, 0] % 1)[:, None]  # I think this is to avoid fractional indices
             self.scanOr[a0] = xy
             self.scanDir[a0] = [cosd(theta + 90), sind(theta + 90)]

@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 
 from dataclasses import dataclass
 
-from makeimage import SPmakeImage
+from makeimage_new import SPmakeImage
 from sMergeClass import sMergeClass
 
 from tqdm.auto import tqdm
@@ -47,6 +47,7 @@ def linear_drift(ss):
             # here, scanOr[0,0] is 1 value behind the Matlab version
             # scanOr[-1, -1] is 65, in both versions
             ss.scanOr[:2] = ss.scanOr[:2] + np.tile(xyShift, [2, 1, 1])
+
             ss = SPmakeImage(ss, 0)
             ss = SPmakeImage(ss, 1)
 
@@ -54,7 +55,6 @@ def linear_drift(ss):
                 ss.w2*ss.imageTransform[0]
             ) * np.conj(
                 ss.w2*ss.imageTransform[1])
-            breakpoint()
             Icorr = np.fft.ifft2(np.sqrt(abs(m))*np.exp(1j*np.angle(m))).real
             ss.linearSearchScore1[a0, a1] = np.max(Icorr)
             ss.scanOr[:2] -= np.tile(xyShift, [2, 1, 1])
@@ -71,7 +71,6 @@ def SPmerge01(data, scanAngles):
     scanAngles = np.array(scanAngles)
 
     ss = sMergeClass(data, scanAngles)
-
     ss.linearSearch = ss.linearSearch * ss.scanLines.shape[1]
     ss.yDrift, ss.xDrift = np.meshgrid(
         ss.linearSearch, ss.linearSearch)
@@ -87,7 +86,7 @@ def SPmerge01(data, scanAngles):
     paddedarray = np.pad(
         TwoDHanningWindow, ((0, pada), (0, padb)), mode='constant', constant_values=0)
 
-    ss.w2 = np.roll(paddedarray, np.round(padamount/2).astype(int), axis=(0,1))
+    ss.w2 = np.roll(paddedarray, np.round(padamount/2).astype(int), axis=(0, 1))
 
 # First linear
 
@@ -158,11 +157,18 @@ def SPmerge01(data, scanAngles):
     with open('test.txt', 'a') as f:
         f.write('Line2\n')
     ss.scanOr = (ss.scanOr.T + dxy.T).T
+    # fig, (ax1, ax2, ax3) = plt.subplots(ncols=3)
+    # ax1.imshow(ss.imageTransform[0])
+    # ax2.imshow(ss.imageTransform[1])
+    # ax3.imshow(ss.imageTransform[2])
+    # plt.show()
+
     for a0 in range(ss.numImages):
-        if a0 == 1:
-            ss = SPmakeImage(ss, a0, debug=False)
-        else:
-            ss = SPmakeImage(ss, a0, debug=False)
+        ss = SPmakeImage(ss, a0, debug=True)
+        # if a0 == 1:
+        #     ss = SPmakeImage(ss, a0, debug=False)
+        # else:
+        #     ss = SPmakeImage(ss, a0, debug=False)
 
     ss.ref = np.round(ss.imageSize/2).astype(int)
     imagePlot = np.mean(ss.imageTransform, axis=0)

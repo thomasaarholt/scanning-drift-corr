@@ -4,25 +4,20 @@ from scipy.ndimage import gaussian_filter
 import matplotlib.pyplot as plt
 
 
-def SPmakeImage(s, indImage=0, debug=False):
-    # print('indImage', indImage+1)
-    indLines = np.ones(s.scanLines.shape[2], dtype=bool)
+def SPmakeImage(ss, indImage=0, debug=False):
+    indLines = np.ones(ss.scanLines.shape[2], dtype=bool)
 
     # Unclear if arange in t = should be 0 to +0 or not
     # Edit: Apparently, it needs to be 2 to +2 in order to match matlab
-    t = np.tile(
-        np.arange(2, s.scanLines.shape[2]+2), reps=[indLines.sum(), 1])
-    xtile = s.scanOr[indImage, 0, indLines]
-    ytile = s.scanOr[indImage, 1, indLines]
-    x0 = np.tile(xtile, reps=[s.scanLines.shape[2], 1])
-    y0 = np.tile(ytile, reps=[s.scanLines.shape[2], 1])
+    tt = np.arange(2, ss.scanLines.shape[2]+2)
+    
+    xInd = (ss.scanOr[indImage, 0, indLines][:, None] + tt*ss.scanDir[indImage, 0]).flatten()
+    yInd = (ss.scanOr[indImage, 1, indLines][:, None] + tt*ss.scanDir[indImage, 1]).flatten()
+    # scanOr[indLines, 1][:, None] + (t*scanDir[1])[None, :]
+    breakpoint()
 
-    # Might need to remove .T on this line only
-    xInd = x0.T.flatten() + t.flatten()*s.scanDir[indImage, 0]
-    yInd = y0.T.flatten() + t.flatten()*s.scanDir[indImage, 1]
-
-    xInd2 = np.clip(xInd, 0, s.imageSize[0]-2)  # end with -1)?
-    yInd2 = np.clip(yInd, 0, s.imageSize[1]-2)
+    xInd2 = np.clip(xInd, 0, ss.imageSize[0]-2)  # end with -1)?
+    yInd2 = np.clip(yInd, 0, ss.imageSize[1]-2)
 
     # Bilinear interpolation on the image in a 2x2 pixel fashion¨
     # xAll and yAll are the coordinates of each pixel, w1 the intensity
@@ -41,30 +36,30 @@ def SPmakeImage(s, indImage=0, debug=False):
     if debug:
         breakpoint()
     # Get the 2D indices of the bilinear interpolation
-    indAll = np.ravel_multi_index((xAll, yAll), s.imageSize)
-    sL = s.scanLines[indImage, :, indLines].T
+    indAll = np.ravel_multi_index((xAll, yAll), ss.imageSize)
+    sL = ss.scanLines[indImage, :, indLines].T
 
     weights = (w1*sL.flatten()).flatten()
     acc = np.bincount(
         indAll.flatten(),
         weights=weights,
-        minlength=np.prod(s.imageSize))
+        minlength=np.prod(ss.imageSize))
 
     weights = w1.flatten()
     acc2 = np.bincount(
-        indAll.flatten(), weights=weights, minlength=np.prod(s.imageSize))
+        indAll.flatten(), weights=weights, minlength=np.prod(ss.imageSize))
 
-    sig = np.reshape(acc, s.imageSize)
-    count = np.reshape(acc2, s.imageSize)
+    sig = np.reshape(acc, ss.imageSize)
+    count = np.reshape(acc2, ss.imageSize)
 
-    r = np.maximum(np.ceil(s.KDEsigma*3), 5.0)
+    r = np.maximum(np.ceil(ss.KDEsigma*3), 5.0)
     # Just do gaussian smoothing instead?
-    sig = gaussian_filter(sig, s.KDEsigma)
-    count = gaussian_filter(count, s.KDEsigma)
+    sig = gaussian_filter(sig, ss.KDEsigma)
+    count = gaussian_filter(count, ss.KDEsigma)
 
     sub = count > 0
     sig[sub] = sig[sub] / count[sub]
-    s.imageTransform[indImage] = sig
+    ss.imageTransform[indImage] = sig
     # plt.figure()
     # plt.imshow(sig)
     # plt.show()
@@ -73,6 +68,6 @@ def SPmakeImage(s, indImage=0, debug=False):
     bound[:, [0, -1]] = 1
     euclid = distance_transform_edt(1-bound)
     euclidian_min = np.minimum(
-        euclid/s.edgeWidth, 1)
-    s.imageDensity[indImage] = np.sin(euclidian_min*np.pi/2)**2
-    return s
+        euclid/ss.edgeWidth, 1)
+    ss.imageDensity[indImage] = np.sin(euclidian_min*np.pi/2)**2
+    return ss

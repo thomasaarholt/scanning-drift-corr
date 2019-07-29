@@ -38,9 +38,7 @@ def gaussian_kernel(n, std, normalised=False):
     return gaussian2D
 
 
-def cross_correlation(img1, img2, weight):
-    img1_fft = np.fft.fft2(weight * img1)
-    img2_fft = np.fft.fft2(weight * img2)
+def cross_correlation(img1_fft, img2_fft):
     m = img1_fft * np.conj(img2_fft)
 
     magnitude = np.sqrt(abs(m))
@@ -63,9 +61,12 @@ def linear_drift(ss):
             ss = SPmakeImage(ss, 0)
             ss = SPmakeImage(ss, 1)
 
-            img1 = ss.imageTransform[0]
-            img2 = ss.imageTransform[1]
-            Icorr = cross_correlation(img1, img2, ss.w2)
+            img1, img2 = ss.imageTransform[:2]
+
+            img1_fft = np.fft.fft2(ss.weights * img1)
+            img2_fft = np.fft.fft2(ss.weights * img2)
+
+            Icorr = cross_correlation(img1_fft, img2_fft)
 
             ss.linearSearchScore1[a0, a1] = np.max(Icorr)
             ss.scanOr[:2] -= np.tile(xyShift, [2, 1, 1])
@@ -75,7 +76,7 @@ def linear_drift(ss):
 def SPmerge01(data, scanAngles):
     with open("results.txt", "w+") as f:
         f.write("")
-    skip = False
+    skip = True
     import numpy as np
 
     data = np.array(data)
@@ -96,7 +97,7 @@ def SPmerge01(data, scanAngles):
         TwoDHanningWindow, ((0, pada), (0, padb)), mode="constant", constant_values=0
     )
 
-    ss.w2 = np.roll(paddedarray, np.round(padamount / 2).astype(int), axis=(0, 1))
+    ss.weights = np.roll(paddedarray, np.round(padamount / 2).astype(int), axis=(0, 1))
 
     # First linear
 
@@ -145,26 +146,22 @@ def SPmerge01(data, scanAngles):
     with open("results.txt", "a") as f:
         f.write("Line2\n")
     dxy = np.zeros((ss.numImages, 2))
-    G1 = np.fft.fft2(ss.w2 * ss.imageTransform[0])
+
+    img1 = ss.imageTransform[0]
+    img1_fft = np.fft.fft2(ss.weights * img1)
 
     for a0 in range(1, ss.numImages):
-        plt.figure()
-        plt.imshow(ss.w2 * ss.imageTransform[a0])
-        plt.show()
-        G2 = np.fft.fft2(ss.w2 * ss.imageTransform[a0])
-        m = G1 * np.conj(G2)
-        m2 = np.sqrt(abs(m))
-        euler = np.exp(1j * np.angle(m))
-        Icorr = np.fft.ifft2(m2 * euler).real
-        ind = np.argmax(Icorr.flatten())
-
-        dx, dy = np.unravel_index(ind, Icorr.shape)
+        img2 = ss.imageTransform[a0]
+        img2_fft = np.fft.fft2(ss.weights * img2)
+        Icorr = cross_correlation(img1_fft, img2_fft)
+        dx, dy = np.unravel_index(Icorr.argmax(), Icorr.shape)
 
         # Might need (Icorr.shape[0] - 1)/2
-        dx2 = (dx - 1 + Icorr.shape[0] / 2) % (Icorr.shape[0] - Icorr.shape[0] / 2)
-        dy2 = (dy - 1 + Icorr.shape[1] / 2) % (Icorr.shape[1] - Icorr.shape[1] / 2)
+        dx2 = (dx - 1 + Icorr.shape[0] / 2) % Icorr.shape[0] - Icorr.shape[0] / 2
+        dy2 = (dy - 1 + Icorr.shape[1] / 2) % Icorr.shape[1] - Icorr.shape[1] / 2
+
         dxy[a0] = dxy[a0 - 1] + np.array([dx2, dy2])
-        G1 = G2
+        img1_fft = img2_fft
 
     dxy[:, 0] -= np.mean(dxy[:, 0])
     dxy[:, 1] -= np.mean(dxy[:, 1])
@@ -179,10 +176,6 @@ def SPmerge01(data, scanAngles):
 
     for a0 in range(ss.numImages):
         ss = SPmakeImage(ss, a0, debug=False)
-        # if a0 == 1:
-        #     ss = SPmakeImage(ss, a0, debug=False)
-        # else:
-        #     ss = SPmakeImage(ss, a0, debug=False)
 
     ss.ref = np.round(ss.imageSize / 2).astype(int)
     imagePlot = np.mean(ss.imageTransform, axis=0)

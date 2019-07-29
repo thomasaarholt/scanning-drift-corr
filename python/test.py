@@ -11,6 +11,7 @@ img2 = f['image90deg'][:]
 img3 = f['imageIdeal'][:]
 
 imgs = [img1, img2, img1]
+imgs = [img.T for img in imgs]
 
 #imgs = [img[:, :-5] for img in imgs]
 scanAngles = [0, 90, 0]

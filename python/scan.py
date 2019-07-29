@@ -38,11 +38,23 @@ def gaussian_kernel(n, std, normalised=False):
     return gaussian2D
 
 
+def cross_correlation(img1, img2, weight):
+    img1_fft = np.fft.fft2(weight * img1)
+    img2_fft = np.fft.fft2(weight * img2)
+    m = img1_fft * np.conj(img2_fft)
+
+    magnitude = np.sqrt(abs(m))
+    euler = np.exp(1j * np.angle(m))
+    Icorr = np.fft.ifft2(magnitude * euler).real
+    return Icorr
+
+
 def linear_drift(ss):
     # Problems in here
     for a0 in tqdm(range(len(ss.linearSearch))):
         for a1 in tqdm(range(len(ss.linearSearch))):
-            xyShift = [ss.inds * ss.xDrift[a0, a1], ss.inds * ss.yDrift[a0, a1]]
+            drift = np.stack([ss.xDrift[a0, a1], ss.yDrift[a0, a1]])
+            xyShift = ss.inds * drift[:, np.newaxis]
 
             # here, scanOr[0,0] is 1 value behind the Matlab version
             # scanOr[-1, -1] is 65, in both versions
@@ -51,19 +63,19 @@ def linear_drift(ss):
             ss = SPmakeImage(ss, 0)
             ss = SPmakeImage(ss, 1)
 
-            m = np.fft.fft2(ss.w2 * ss.imageTransform[0]) * np.conj(
-                ss.w2 * ss.imageTransform[1]
-            )
-            Icorr = np.fft.ifft2(np.sqrt(abs(m)) * np.exp(1j * np.angle(m))).real
+            img1 = ss.imageTransform[0]
+            img2 = ss.imageTransform[1]
+            Icorr = cross_correlation(img1, img2, ss.w2)
+
             ss.linearSearchScore1[a0, a1] = np.max(Icorr)
             ss.scanOr[:2] -= np.tile(xyShift, [2, 1, 1])
     return ss
 
 
 def SPmerge01(data, scanAngles):
-    with open("test.txt", "w+") as f:
+    with open("results.txt", "w+") as f:
         f.write("")
-    skip = True
+    skip = False
     import numpy as np
 
     data = np.array(data)
@@ -89,7 +101,7 @@ def SPmerge01(data, scanAngles):
     # First linear
 
     if not skip:
-        with open("test.txt", "a") as f:
+        with open("results.txt", "a") as f:
             f.write("Linear1\n")
         ss = linear_drift(ss)
 
@@ -107,7 +119,7 @@ def SPmerge01(data, scanAngles):
 
         ss.yDrift, ss.xDrift = np.meshgrid(yRefine, xRefine)
         ss.linearSearchScore2 = np.zeros((len(ss.linearSearch), len(ss.linearSearch)))
-        with open("test.txt", "a") as f:
+        with open("results.txt", "a") as f:
             f.write("Linear2\n")
         ss = linear_drift(ss)
         with open("savedstate.pickle", "wb") as handle:
@@ -124,20 +136,18 @@ def SPmerge01(data, scanAngles):
     # combine
 
     xyShift = (ss.inds[:, None] * ss.xyLinearDrift).T
-    with open("test.txt", "a") as f:
+    with open("results.txt", "a") as f:
         f.write("Line1\n")
     for a0 in range(ss.numImages):
         ss.scanOr[a0] = ss.scanOr[a0] + xyShift
         ss = SPmakeImage(ss, a0, debug=False)
 
-    with open("test.txt", "a") as f:
+    with open("results.txt", "a") as f:
         f.write("Line2\n")
     dxy = np.zeros((ss.numImages, 2))
     G1 = np.fft.fft2(ss.w2 * ss.imageTransform[0])
 
-
     for a0 in range(1, ss.numImages):
-        breakpoint()
         plt.figure()
         plt.imshow(ss.w2 * ss.imageTransform[a0])
         plt.show()
@@ -168,7 +178,7 @@ def SPmerge01(data, scanAngles):
     # plt.show()
 
     for a0 in range(ss.numImages):
-        ss = SPmakeImage(ss, a0, debug=True)
+        ss = SPmakeImage(ss, a0, debug=False)
         # if a0 == 1:
         #     ss = SPmakeImage(ss, a0, debug=False)
         # else:

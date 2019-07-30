@@ -66,6 +66,7 @@ def linear_drift(ss):
             img1_fft = np.fft.fft2(ss.weights * img1)
             img2_fft = np.fft.fft2(ss.weights * img2)
 
+            # This is a measure of how good the drift correction is
             Icorr = cross_correlation(img1_fft, img2_fft)
 
             ss.linearSearchScore1[a0, a1] = np.max(Icorr)
@@ -154,13 +155,12 @@ def SPmerge01(data, scanAngles):
         img2 = ss.imageTransform[a0]
         img2_fft = np.fft.fft2(ss.weights * img2)
         Icorr = cross_correlation(img1_fft, img2_fft)
+        print(Icorr.shape, Icorr.argmax())
         dx, dy = np.unravel_index(Icorr.argmax(), Icorr.shape)
 
-        print("")
-        print(dx, dy)
-        from skimage.feature import register_translation
-
-        print(register_translation(img1, img2))
+        # Could alternatively use the skimage cross-correlation function?
+        # from skimage.feature import register_translation
+        # print(register_translation(ss.weights * img1, ss.weights * img2))
 
         # Might need (Icorr.shape[0] - 1)/2
         dx2 = (dx - 1 + Icorr.shape[0] / 2) % Icorr.shape[0] - Icorr.shape[0] / 2

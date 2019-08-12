@@ -10,7 +10,7 @@ from time import time
 def cross_correlation(img1_fft, img2_fft):
     m = img1_fft * np.conj(img2_fft)
 
-    magnitude = np.sqrt(abs(m))
+    magnitude = np.sqrt(np.abs(m))
     euler = np.exp(1j * np.angle(m))
     Icorr = np.fft.ifft2(magnitude * euler).real
     return Icorr
@@ -70,19 +70,7 @@ def rough(images, angles):
     translation = translation[::-1] - halfshape
     print(translation)
 
-    # img1, img2 = padded_images
-    # print("calc")
-    # t = time()
-    # corr = fftconvolve(img1, img2[::-1, ::-1], mode="same")
-    # fig, (ax1, ax2, ax3) = plt.subplots(ncols=3)
-    # ax1.imshow(img1)
-    # ax2.imshow(img2)
-    # ax3.imshow(np.abs(corr))
-    # plt.show()
-    # print(time() - t)
 
-    # shift = np.where(corr == corr.max())
-    # shift = (shift[0] % img1.shape[0], shift[1] % img1.shape[1])
     # first_ffts = [np.fft.fft2(weights * img) for img in first_imgs]
     # last_ffts = [np.fft.fft2(weights * img) for img in last_imgs]
 
@@ -114,5 +102,7 @@ def rough(images, angles):
     for ax, im in zip(AX.flatten(), imgs):
         ax.imshow(im)
     plt.show()
-    # np.rotate()
 
+    plt.figure()
+    plt.imshow(np.mean(corrected_images, axis=0))
+    plt.show()

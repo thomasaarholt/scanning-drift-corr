@@ -57,19 +57,6 @@ def rough(images, angles):
 
     first_imgs, last_imgs = weighted_images[:-1], weighted_images[1:]
 
-    # correlations = [
-    #     fftconvolve(img1, img2[::-1, ::-1], mode="same")
-    #     for img1, img2 in zip(first_imgs, last_imgs)
-    # ]
-
-    # fig, (ax1, ax2) = plt.subplots(ncols=2)
-    # img1, img2 = rotated_images
-    # ax1.imshow(img1)
-    # ax2.imshow(img2)
-    # plt.show()
-
-
-
     first_ffts = [np.fft.fft2(weights * img) for img in first_imgs]
     last_ffts = [np.fft.fft2(weights * img) for img in last_imgs]
 
@@ -80,7 +67,7 @@ def rough(images, angles):
     translations = [
         translation(corr) for corr in correlations
     ]
-
+    print(translations)
     corrected_images = [rotated_images[0]] + [
         np.fft.ifftn(fourier_shift(np.fft.fftn(img), shift)).real
         for img, shift in zip(rotated_images[1:], translations)
@@ -95,6 +82,6 @@ def rough(images, angles):
         ax.imshow(im)
     plt.show()
 
-    plt.figure()
-    plt.imshow(np.mean(corrected_images, axis=0))
-    plt.show()
+    # plt.figure()
+    # plt.imshow(np.mean(corrected_images, axis=0))
+    # plt.show()

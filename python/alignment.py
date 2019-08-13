@@ -15,6 +15,11 @@ def cross_correlation(img1_fft, img2_fft):
     Icorr = np.fft.ifft2(magnitude * euler).real
     return Icorr
 
+def translation(corr):
+    translation = np.unravel_index(corr.argmax(), corr.shape)
+    halfshape = np.array(corr.shape) / 2
+    translation = (translation[::-1] - halfshape) % halfshape
+    return translation
 
 def crop_center(img, cropx, cropy):
     y, x = img.shape
@@ -52,46 +57,33 @@ def rough(images, angles):
 
     first_imgs, last_imgs = weighted_images[:-1], weighted_images[1:]
 
+    # correlations = [
+    #     fftconvolve(img1, img2[::-1, ::-1], mode="same")
+    #     for img1, img2 in zip(first_imgs, last_imgs)
+    # ]
+
+    # fig, (ax1, ax2) = plt.subplots(ncols=2)
+    # img1, img2 = rotated_images
+    # ax1.imshow(img1)
+    # ax2.imshow(img2)
+    # plt.show()
+
+
+
+    first_ffts = [np.fft.fft2(weights * img) for img in first_imgs]
+    last_ffts = [np.fft.fft2(weights * img) for img in last_imgs]
+
     correlations = [
-        fftconvolve(img1, img2[::-1, ::-1], mode="same")
-        for img1, img2 in zip(first_imgs, last_imgs)
+        cross_correlation(fft1, fft2) for fft1, fft2 in zip(first_ffts, last_ffts)
     ]
 
-    fig, (ax1, ax2) = plt.subplots(ncols=2)
-    img1, img2 = rotated_images
-    ax1.imshow(img1)
-    ax2.imshow(img2)
-    plt.show()
-
-    translation = np.array(
-        [np.unravel_index(corr.argmax(), corr.shape) for corr in correlations]
-    )
-    halfshape = new_shape / 2
-    translation = translation[::-1] - halfshape
-    print(translation)
-
-
-    # first_ffts = [np.fft.fft2(weights * img) for img in first_imgs]
-    # last_ffts = [np.fft.fft2(weights * img) for img in last_imgs]
-
-    # translation = [
-    #     cross_correlation(fft1, fft2) for fft1, fft2 in zip(first_ffts, last_ffts)
-    # ]
-
-    # translation = [
-    #     np.unravel_index(Icorr.argmax(), Icorr.shape) for Icorr in translation
-    # ]
-
-    # translation = np.multiply(translation, -1)
-
-    # # translation = [
-    # #     register_translation(weights * img1, weights * img2)[0]
-    # #     for img1, img2 in zip(padded_images[:-1], padded_images[1:])
-    # # ]
+    translations = [
+        translation(corr) for corr in correlations
+    ]
 
     corrected_images = [rotated_images[0]] + [
         np.fft.ifftn(fourier_shift(np.fft.fftn(img), shift)).real
-        for img, shift in zip(rotated_images[1:], translation)
+        for img, shift in zip(rotated_images[1:], translations)
     ]
 
     fig, AX = plt.subplots(nrows=2, ncols=2, figsize=(12, 12))

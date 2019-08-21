@@ -11,8 +11,8 @@ f = h5py.File(file, mode="r")
 img1 = f["image00deg"][:]
 img2 = f["image90deg"][:]
 img3 = f["imageIdeal"][:]
-scanAngles = [0, 90, 0]
-imgs = [img1, img2, img1]
+scanAngles = [0, 90]
+imgs = [img1, img2]
 
 if False:
     img1b = rotate(img1, 30, True)

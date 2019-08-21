@@ -10,18 +10,16 @@ from time import time
 def cross_correlation(img1_fft, img2_fft):
     m = img1_fft * np.conj(img2_fft)
 
-    magnitude = np.sqrt(abs(m))
+    magnitude = np.sqrt(np.abs(m))
     euler = np.exp(1j * np.angle(m))
-    Icorr = np.fft.ifft2(magnitude * euler).real
-    return Icorr
+    corr = np.fft.ifft2(magnitude * euler).real
+    return corr
 
-
-def crop_center(img, cropx, cropy):
-    y, x = img.shape
-    startx = x // 2 - (cropx // 2)
-    starty = y // 2 - (cropy // 2)
-    return img[starty : starty + cropy, startx : startx + cropx]
-
+def translation(corr):
+    translation = np.unravel_index(corr.argmax(), corr.shape)
+    halfshape = np.array(corr.shape) / 2
+    translation = (translation[::-1] - halfshape) % halfshape
+    return translation
 
 def hanningLocal(N):
     # Should this be 1, N+1? Or 0, N?
@@ -52,58 +50,20 @@ def rough(images, angles):
 
     first_imgs, last_imgs = weighted_images[:-1], weighted_images[1:]
 
+    first_ffts = [np.fft.fft2(weights * img) for img in first_imgs]
+    last_ffts = [np.fft.fft2(weights * img) for img in last_imgs]
+
     correlations = [
-        fftconvolve(img1, img2[::-1, ::-1], mode="same")
-        for img1, img2 in zip(first_imgs, last_imgs)
+        cross_correlation(fft1, fft2) for fft1, fft2 in zip(first_ffts, last_ffts)
     ]
 
-    fig, (ax1, ax2) = plt.subplots(ncols=2)
-    img1, img2 = rotated_images
-    ax1.imshow(img1)
-    ax2.imshow(img2)
-    plt.show()
-
-    translation = np.array(
-        [np.unravel_index(corr.argmax(), corr.shape) for corr in correlations]
-    )
-    halfshape = new_shape / 2
-    translation = translation[::-1] - halfshape
-    print(translation)
-
-    # img1, img2 = padded_images
-    # print("calc")
-    # t = time()
-    # corr = fftconvolve(img1, img2[::-1, ::-1], mode="same")
-    # fig, (ax1, ax2, ax3) = plt.subplots(ncols=3)
-    # ax1.imshow(img1)
-    # ax2.imshow(img2)
-    # ax3.imshow(np.abs(corr))
-    # plt.show()
-    # print(time() - t)
-
-    # shift = np.where(corr == corr.max())
-    # shift = (shift[0] % img1.shape[0], shift[1] % img1.shape[1])
-    # first_ffts = [np.fft.fft2(weights * img) for img in first_imgs]
-    # last_ffts = [np.fft.fft2(weights * img) for img in last_imgs]
-
-    # translation = [
-    #     cross_correlation(fft1, fft2) for fft1, fft2 in zip(first_ffts, last_ffts)
-    # ]
-
-    # translation = [
-    #     np.unravel_index(Icorr.argmax(), Icorr.shape) for Icorr in translation
-    # ]
-
-    # translation = np.multiply(translation, -1)
-
-    # # translation = [
-    # #     register_translation(weights * img1, weights * img2)[0]
-    # #     for img1, img2 in zip(padded_images[:-1], padded_images[1:])
-    # # ]
-
+    translations = [
+        translation(corr) for corr in correlations
+    ]
+    print(translations)
     corrected_images = [rotated_images[0]] + [
         np.fft.ifftn(fourier_shift(np.fft.fftn(img), shift)).real
-        for img, shift in zip(rotated_images[1:], translation)
+        for img, shift in zip(rotated_images[1:], translations)
     ]
 
     fig, AX = plt.subplots(nrows=2, ncols=2, figsize=(12, 12))
@@ -114,5 +74,3 @@ def rough(images, angles):
     for ax, im in zip(AX.flatten(), imgs):
         ax.imshow(im)
     plt.show()
-    # np.rotate()
-

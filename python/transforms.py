@@ -8,7 +8,9 @@ from scipy.signal import fftconvolve
 
 
 def hybrid_correlation(img1_fft, img2_fft):
-    "Unsure if this actually is hybrid correlation according to Ophus"
+    """Unsure if this actually the hybrid correlation Ophus refers to.
+    Works on images already in fourier space.
+    """
     m = img1_fft * np.conj(img2_fft)
 
     magnitude = np.sqrt(np.abs(m))
@@ -18,12 +20,13 @@ def hybrid_correlation(img1_fft, img2_fft):
 
 
 def phase_correlation(img1_fft, img2_fft):
-    "A and B are FFTs of images"
+    "Perform phase correlation on images that are already in fourier space"
     C = img1_fft * np.conj(img2_fft)
     return np.fft.ifft2(C / np.abs(C)).real
 
 
 def cross_correlation(im1, im2):
+    "Perform cross correlation on images in real space"
     # get rid of the averages, otherwise the results are not good
     im1 -= np.mean(im1)
     im2 -= np.mean(im2)
@@ -34,7 +37,8 @@ def cross_correlation(im1, im2):
 
 def changespace(x, maxval):
     """Shift indices from [0, max] to [-max/2, max/2]
-    Handles both single values and numpy shape tuples"""
+    Handles both single values and numpy shape tuples
+    """
     x = np.array(x)
     maxval = np.array(maxval)
     half = maxval / 2
@@ -56,6 +60,9 @@ def cross_translation(corr):
 
 
 def pad_images(images, pad_scale=1.25):
+    """Pad images as a function of their size.
+    Also calculates a window function, also padded.
+    """
     old_shape = np.array(images[0].shape)
     new_shape = old_shape * pad_scale  # approx
     padding = ((new_shape - old_shape) / 2).astype(int)
@@ -91,11 +98,6 @@ def set_transform_matrices(angles, sheares, scales):
     rotation_matrices = [
         AffineTransform(rotation=np.deg2rad(angle)) for angle in angles
     ]
-    print(sheares)
-    for shear in sheares:
-        print(shear)
-        shear_matrix = AffineTransform(shear=shear)
-        print(shear_matrix.params)
     shear_matrices = [AffineTransform(shear=shear) for shear in sheares]
     scale_matrices = [AffineTransform(scale=(1, scale)) for scale in scales]
 
@@ -137,12 +139,39 @@ def transform_single_image(img, rot_matrix, shear_matrix, scale_matrix, weights=
     shift_x, shift_y = np.array(img.shape) / 2.0
     tf_shift = AffineTransform(translation=[-shift_y, -shift_x])
     tf_shift_inv = AffineTransform(translation=[shift_y, shift_x])
-    breakpoint()
     return weights * warp(
         img,
         (tf_shift + scale_matrix + shear_matrix + rot_matrix + tf_shift_inv).inverse,
         order=0,
     )
+
+
+def plot_transformed_images(padded_images, angles, shear_indices, scale_indices, sheares, scales):
+    fig, AX = plt.subplots(ncols=len(padded_images) - 1, squeeze=False)
+
+    for i, (ax, shear_index, scale_index) in enumerate(zip(AX.flatten(), shear_indices, scale_indices)):
+        shear, scale = sheares[shear_index], scales[scale_index]
+        angle = angles[0]
+        rot_mat, shear_mat, scale_mat = set_transform_matrices(
+        [angle], [shear], [scale]
+        )
+        img1 = transform_single_image(
+            padded_images[0], rot_mat[0], shear_mat[0], scale_mat[0]
+        )
+
+        angle = [angles[i + 1]]  # first image and i+1 image
+
+        rot_mat, shear_mat, scale_mat = set_transform_matrices(
+            [angle], [shear], [scale]
+        )
+
+        img2 = transform_single_image(
+            padded_images[i + 1], rot_mat[0], shear_mat[0], scale_mat[0]
+        )
+
+        ax.imshow(img1 + img2, cmap="viridis")
+        ax.axis("off")
+    plt.show()
 
 
 def HanningImage(N):

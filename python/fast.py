@@ -17,6 +17,7 @@ from transforms import (
     set_transform_matrices,
     transform,
     transform_single_image,
+    plot_transformed_images,
     normalise_max,
 )
 
@@ -141,33 +142,40 @@ for i, ax in enumerate(np.reshape(AX, np.prod(AX.shape))):
     ax.axis("off")
 
 # Plot whole images
-fig, AX = plt.subplots(ncols=len(padded_images) - 1, squeeze=False)
+shear_indices = []
+scale_indices = []
+for i in range(len(images)-1):
+    shear_index, scale_index = np.unravel_index(max_indexes[i], (shear_steps, scale_steps))
+    shear_indices.append(shear_index)
+    scale_indices.append(scale_index)
 
-# Loop across 0, numImages - 1
-for i, ax in enumerate(np.reshape(AX, np.prod(AX.shape))):
-    shear_index, scale_index = np.unravel_index(
-        max_indexes[i], (shear_steps, scale_steps)
-    )
-    shear, scale = sheares[shear_index], scales[scale_index]
+plot_transformed_images(padded_images, angles, shear_indices, scale_indices, sheares, scales)
 
-    angle = [angles[0]]  # first image and i+1 image
-    rot_matrices, shear_matrices, scale_matrices = set_transform_matrices(
-        [angle], [shear], [scales]
-    )
-    img1 = transform_single_image(
-        padded_images[0], rot_matrices[0], shear_matrices[0], scale_matrices[0]
-    )
+# # Loop across 0, numImages - 1
+# for i, ax in enumerate(np.reshape(AX, np.prod(AX.shape))):
+#     shear_index, scale_index = np.unravel_index(
+#         max_indexes[i], (shear_steps, scale_steps)
+#     )
+#     shear, scale = sheares[shear_index], scales[scale_index]
 
-    angle = [angles[i + 1]]  # first image and i+1 image
+#     angle = [angles[0]]  # first image and i+1 image
+#     rot_matrices, shear_matrices, scale_matrices = set_transform_matrices(
+#         [angle], [shear], [scale]
+#     )
+#     img1 = transform_single_image(
+#         padded_images[0], rot_matrices[0], shear_matrices[0], scale_matrices[0]
+#     )
 
-    rot_matrices, shear_matrices, scale_matrices = set_transform_matrices(
-        [angle], [shear], [scales]
-    )
+#     angle = [angles[i + 1]]  # first image and i+1 image
 
-    img2 = transform_single_image(
-        padded_images[i + 1], rot_matrices[0], shear_matrices[0], scale_matrices[0]
-    )
+#     rot_matrices, shear_matrices, scale_matrices = set_transform_matrices(
+#         [angle], [shear], [scale]
+#     )
 
-    ax.imshow(img1 + img2, cmap="viridis")
-    ax.axis("off")
-plt.show()
+#     img2 = transform_single_image(
+#         padded_images[i + 1], rot_matrices[0], shear_matrices[0], scale_matrices[0]
+#     )
+
+#     ax.imshow(img1 + img2, cmap="viridis")
+#     ax.axis("off")
+# plt.show()

@@ -92,6 +92,10 @@ def set_transform_matrices(angles, sheares, scales):
         AffineTransform(rotation=np.deg2rad(angle)) for angle in angles
     ]
     print(sheares)
+    for shear in sheares:
+        print(shear)
+        shear_matrix = AffineTransform(shear=shear)
+        print(shear_matrix.params)
     shear_matrices = [AffineTransform(shear=shear) for shear in sheares]
     scale_matrices = [AffineTransform(scale=(1, scale)) for scale in scales]
 

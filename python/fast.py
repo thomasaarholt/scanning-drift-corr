@@ -1,11 +1,13 @@
 import numpy as np
 from numpy.fft import fft2
 import matplotlib.pyplot as plt
-
+import time
 from pathlib import Path
 import h5py
 from scipy.ndimage import fourier_shift
+import logging
 
+start_time = time.time()
 
 from transforms import (
     prepare_correlation_data,
@@ -21,8 +23,8 @@ from transforms import (
     normalise_max,
 )
 
-pad_factor = 1.1  # larger than 1, approx 1.25 is good
-steps = 5  # odd, 5,7 is normal
+pad_factor = 1.3  # larger than 1, approx 1.25 is good
+steps = 11  # odd, 5,7 is normal
 correlation_method = "phase"  # "phase", "cross", "hybrid"
 gpu = True  # True / False
 shear_steps = steps
@@ -62,7 +64,7 @@ elif test_dataset == "B":
     img1 = np.pad(img1, 200, "constant")
     SHIFT = [80, 90]
     ANGLE = 45
-    img2 = np.fft.ifftn(fourier_shift(fft2(img1), SHIFT)).real
+    img2 = np.fft.ifft2(fourier_shift(fft2(img1), SHIFT)).real
     img2 = rotate(img2, ANGLE, reshape=False)
     images = [img1, img2]
     angles = (0, ANGLE)
@@ -76,7 +78,7 @@ elif test_dataset == "C":
     f = h5py.File(file, mode="r")
     img1 = f["image00deg"][:]
     img2 = f["image90deg"][:]
-    img3 = f["imageIdeal"][:]
+    # img3 = f["imageIdeal"][:]
     images = [img1, img2]
     angles = [0, 90]
 
@@ -86,18 +88,16 @@ else:
 images = [normalise_max(img) for img in images]
 print("padding images")
 padded_images, weights = pad_images(images, pad_factor=pad_factor)
-print(np.shape(padded_images), shear_steps, scale_steps, padded_images[0].dtype)
 GB = np.round(
-    np.prod(np.shape(padded_images))
+    float(np.prod(np.shape(padded_images)))
     * shear_steps
     * scale_steps
     * padded_images[0].dtype.itemsize
     / 1e9,
     2,
 )  # 32 bytes per complex64
+
 print("Estimating memory usage of {}GB".format(GB))
-
-
 # Set the various sheares, scales, first in terms of range
 sheares, scales = set_shear_and_scale_ranges(
     padded_images[0].shape, shear_steps=shear_steps, scale_steps=scale_steps, pix=2
@@ -132,35 +132,29 @@ max_indexes, shifts_list = correlate_images(
 print("Calculating final images")
 data2 = np.array(data).swapaxes(0, 1)
 image_sums = []
-print("max index", max_indexes)
 
 for i, img_array in enumerate(data2[1:]):
     max_index = int(max_indexes[i])
     img1 = data2[0, max_index]
     img2 = img_array[max_index]
-    img2_shifted = np.fft.ifftn(
-        fourier_shift(fft2(img2), shifts_list[i][max_index])
-    ).real
+    shift = shifts_list[i][max_index]
+    img2_shifted = np.fft.ifftn(fourier_shift(fft2(img2), shift)).real
     image_sums.append(img1 + img2_shifted)
-
-fig, AX = plt.subplots(ncols=len(padded_images) - 1, squeeze=False)
-for i, ax in enumerate(np.reshape(AX, np.prod(AX.shape))):
-    ax.imshow(image_sums[i], cmap="viridis")
-    ax.axis("off")
-
-# Plot whole images
-shear_indices = []
-scale_indices = []
-for i in range(len(images) - 1):
-    shear_index, scale_index = np.unravel_index(
-        max_indexes[i], (shear_steps, scale_steps)
-    )
-    shear_indices.append(shear_index)
-    scale_indices.append(scale_index)
-
-print(shear_indices)
-print(scale_indices)
+    print("Image drifted ({}, {}) pixels since first frame".format(shift[0], shift[1]))
+# fig, AX = plt.subplots(ncols=len(padded_images) - 1, squeeze=False)
+# for i, ax in enumerate(np.reshape(AX, np.prod(AX.shape))):
+#     ax.imshow(image_sums[i], cmap="viridis")
+#     ax.axis("off")
 
 plot_transformed_images(
-    padded_images, angles, shear_indices, scale_indices, sheares, scales
+    padded_images,
+    angles,
+    shifts_list,
+    max_indexes,
+    sheares,
+    scales,
+    shear_steps,
+    scale_steps,
 )
+
+print("--- %s seconds ---" % (time.time() - start_time))

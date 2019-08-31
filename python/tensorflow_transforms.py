@@ -4,6 +4,18 @@ from tensorflow.math import conj, angle, sqrt, real, reduce_mean as mean
 from tensorflow.signal import ifft2d as ifft2, fft2d as fft2, rfft2d, irfft2d
 
 
+def set_tf_loglevel(level):
+    if level >= logging.FATAL:
+        os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
+    if level >= logging.ERROR:
+        os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
+    if level >= logging.WARNING:
+        os.environ["TF_CPP_MIN_LOG_LEVEL"] = "1"
+    else:
+        os.environ["TF_CPP_MIN_LOG_LEVEL"] = "0"
+    logging.getLogger("tensorflow").setLevel(level)
+
+
 def hybrid_correlation_tf(img1_fft, img2_fft):
     """Unsure if this actually the hybrid correlation Ophus refers to.
     Works on images already in fourier space.

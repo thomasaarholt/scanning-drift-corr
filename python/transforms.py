@@ -3,26 +3,38 @@ from numpy.fft import fft2, ifft2
 import matplotlib.pyplot as plt
 
 import logging
+import os
 from tqdm.auto import tqdm
 
 from skimage.transform import AffineTransform, warp
 from scipy.ndimage import fourier_shift
 from scipy.signal import fftconvolve
 
-from tensorflow_transforms import (
-    cross_correlation_tf,
-    phase_correlation_tf,
-    hybrid_correlation_tf,
-)
-
 try:
     import tensorflow as tf
+
+    from tensorflow_transforms import (
+        cross_correlation_tf,
+        phase_correlation_tf,
+        hybrid_correlation_tf,
+    )
 except:
     logging.warning("Tensorflow not available, do not use gpu=True")
 
 
+def set_tf_loglevel(level):
+    if level >= logging.FATAL:
+        os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
+    if level >= logging.ERROR:
+        os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
+    if level >= logging.WARNING:
+        os.environ["TF_CPP_MIN_LOG_LEVEL"] = "1"
+    else:
+        os.environ["TF_CPP_MIN_LOG_LEVEL"] = "0"
+    logging.getLogger("tensorflow").setLevel(level)
+
+
 def prepare_correlation_data(data, weights, method="phase", gpu=True):
-    print(data.shape, data.dtype)
     if method != "cross":
         if gpu:
             data = data.astype("complex64")
@@ -68,7 +80,6 @@ def correlate_images(correlation_data, method="phase", gpu=True):
         transform_with_best_match = np.array(
             argmax(value_of_pixels_with_highest_correlation)
         )
-        print(transform_with_best_match)
         max_indexes.append(transform_with_best_match)
         shifts_list.append(
             [translate(corr, method=method, gpu=gpu) for corr in transformed_images]
@@ -105,7 +116,7 @@ def translate(corr, method="phase", gpu=True):
         translation_function = cross_translation
     else:
         translation_function = phase_translation
-    return translation_function(corr)
+    return translation_function(corr, gpu=gpu)
 
 
 def hybrid_correlation(img1_fft, img2_fft):
@@ -156,9 +167,12 @@ def phase_translation(corr, gpu=True):
             return tf.reshape(x, [-1])
 
     else:
+
+        def flatten(x):
+            return x.flatten()
+
         argmax = np.argmax
         unravel_index = np.unravel_index
-        flatten = np.flatten
 
     shift = unravel_index(argmax(flatten(corr)), corr.shape)
     shift = changespace(shift, corr.shape)
@@ -180,7 +194,7 @@ def cross_translation(corr, gpu=True):
         flatten = np.flatten
 
     shift = unravel_index(argmax(flatten(corr)), corr.shape)
-    return shift - np.array(shape) / 2
+    return shift - np.array(corr.shape) / 2
 
 
 def pad_images(images, pad_factor=1.25):
@@ -196,8 +210,10 @@ def pad_images(images, pad_factor=1.25):
     ]
     new_shape = np.array(padded_images[0].shape)
 
-    window = HanningImage(old_shape[0]) * HanningImage(old_shape[1]).T
-    weights = np.pad(window, padding, mode="constant", constant_values=0)
+    weights = HanningImage(new_shape)
+
+    # weights = HanningImage(old_shape[0]) * HanningImage(old_shape[1]).T
+    # weights = np.pad(weights, padding, mode="constant", constant_values=0)
     return padded_images, weights
 
 
@@ -275,18 +291,32 @@ def transform_single_image(img, rot_matrix, shear_matrix, scale_matrix, weights=
 
 
 def plot_transformed_images(
-    padded_images, angles, shear_indices, scale_indices, sheares, scales
+    padded_images,
+    angles,
+    shifts_list,
+    max_indexes,
+    sheares,
+    scales,
+    shear_steps,
+    scale_steps,
 ):
     "Apply the best transformation to each image, and plot them on top of each other"
+
+    # Plot whole images
+
     fig, AX = plt.subplots(ncols=len(padded_images) - 1, squeeze=False)
 
-    for i, (ax, shear_index, scale_index) in enumerate(
-        zip(AX.flatten(), shear_indices, scale_indices)
-    ):
+    for i, ax in enumerate(AX.flatten()):
+        max_index = max_indexes[i]
+        shear_index, scale_index = np.unravel_index(
+            max_index, (shear_steps, scale_steps)
+        )
         shear, scale = sheares[shear_index], scales[scale_index]
+        shift = shifts_list[i][max_index]
         rot_mat, shear_mat, scale_mat = set_transform_matrices(
             [angles[0]], [shear], [scale]
         )
+
         img1 = transform_single_image(
             padded_images[0], rot_mat[0], shear_mat[0], scale_mat[0]
         )
@@ -297,22 +327,20 @@ def plot_transformed_images(
         img2 = transform_single_image(
             padded_images[i + 1], rot_mat[0], shear_mat[0], scale_mat[0]
         )
+        img2_shift = ifft2(fourier_shift(fft2(img2), shift)).real
 
-        ax.imshow(img1 + img2, cmap="viridis")
+        ax.imshow(img1 + img2_shift, cmap="viridis")
         ax.axis("off")
 
-    fig, ax = plt.subplots()
-    ax.imshow(img1)
-    fig, ax = plt.subplots()
-    ax.imshow(img2)
-
-    plt.show()
+    # plt.show()
 
 
-def HanningImage(N):
-    "Return a 2D hanning window of size NxN "
-    han = np.hanning(N)
-    return han * han[:, None]
+def HanningImage(shape):
+    "Return a 2D hanning window of size (x, y)"
+    x, y = shape
+    hanx = np.hanning(x)
+    hany = np.hanning(y)
+    return (hanx * hany[:, None]).T
 
 
 def normalise_max(img):

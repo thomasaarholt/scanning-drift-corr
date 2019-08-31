@@ -22,13 +22,18 @@ from transforms import (
 )
 
 pad_factor = 1.1  # larger than 1, approx 1.25 is good
-steps = 9  # odd, 5,7 is normal
+steps = 5  # odd, 5,7 is normal
 correlation_method = "phase"  # "phase", "cross", "hybrid"
 gpu = True  # True / False
 shear_steps = steps
 scale_steps = steps
 
 test_dataset = "A"
+
+if gpu:
+    import tensorflow as tf
+
+    tf.device("/gpu:0")
 
 if test_dataset == "A":
     import hyperspy.api as hs
@@ -100,6 +105,7 @@ sheares, scales = set_shear_and_scale_ranges(
 # Then in terms of transform matrices
 print("Calculating transform matrices")
 transform_matrices = set_transform_matrices(angles, sheares, scales)
+
 rotation_matrices, shear_matrices, scale_matrices = transform_matrices
 
 # Scale and shear the masked data
@@ -126,8 +132,10 @@ max_indexes, shifts_list = correlate_images(
 print("Calculating final images")
 data2 = np.array(data).swapaxes(0, 1)
 image_sums = []
+print("max index", max_indexes)
+
 for i, img_array in enumerate(data2[1:]):
-    max_index = max_indexes[i]
+    max_index = int(max_indexes[i])
     img1 = data2[0, max_index]
     img2 = img_array[max_index]
     img2_shifted = np.fft.ifftn(
@@ -150,35 +158,9 @@ for i in range(len(images) - 1):
     shear_indices.append(shear_index)
     scale_indices.append(scale_index)
 
+print(shear_indices)
+print(scale_indices)
+
 plot_transformed_images(
     padded_images, angles, shear_indices, scale_indices, sheares, scales
 )
-
-# # Loop across 0, numImages - 1
-# for i, ax in enumerate(np.reshape(AX, np.prod(AX.shape))):
-#     shear_index, scale_index = np.unravel_index(
-#         max_indexes[i], (shear_steps, scale_steps)
-#     )
-#     shear, scale = sheares[shear_index], scales[scale_index]
-
-#     angle = [angles[0]]  # first image and i+1 image
-#     rot_matrices, shear_matrices, scale_matrices = set_transform_matrices(
-#         [angle], [shear], [scale]
-#     )
-#     img1 = transform_single_image(
-#         padded_images[0], rot_matrices[0], shear_matrices[0], scale_matrices[0]
-#     )
-
-#     angle = [angles[i + 1]]  # first image and i+1 image
-
-#     rot_matrices, shear_matrices, scale_matrices = set_transform_matrices(
-#         [angle], [shear], [scale]
-#     )
-
-#     img2 = transform_single_image(
-#         padded_images[i + 1], rot_matrices[0], shear_matrices[0], scale_matrices[0]
-#     )
-
-#     ax.imshow(img1 + img2, cmap="viridis")
-#     ax.axis("off")
-# plt.show()

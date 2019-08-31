@@ -17,8 +17,6 @@ from tensorflow_transforms import (
 
 try:
     import tensorflow as tf
-
-    tf.device("/gpu:0")
 except:
     logging.warning("Tensorflow not available, do not use gpu=True")
 
@@ -28,7 +26,6 @@ def prepare_correlation_data(data, weights, method="phase", gpu=True):
     if method != "cross":
         if gpu:
             data = data.astype("complex64")
-            print(data.shape, data.dtype)
             fftdata = tf.signal.fft2d(data)
             return fftdata
         else:
@@ -65,7 +62,14 @@ def correlate_images(correlation_data, method="phase", gpu=True):
         argmax = np.argmax
         max_ = np.max
     for transformed_images in correlations:
-        max_indexes.append(argmax([max_(corr) for corr in transformed_images]))
+        value_of_pixels_with_highest_correlation = [
+            max_(corr) for corr in transformed_images
+        ]
+        transform_with_best_match = np.array(
+            argmax(value_of_pixels_with_highest_correlation)
+        )
+        print(transform_with_best_match)
+        max_indexes.append(transform_with_best_match)
         shifts_list.append(
             [translate(corr, method=method, gpu=gpu) for corr in transformed_images]
         )
@@ -296,6 +300,12 @@ def plot_transformed_images(
 
         ax.imshow(img1 + img2, cmap="viridis")
         ax.axis("off")
+
+    fig, ax = plt.subplots()
+    ax.imshow(img1)
+    fig, ax = plt.subplots()
+    ax.imshow(img2)
+
     plt.show()
 
 

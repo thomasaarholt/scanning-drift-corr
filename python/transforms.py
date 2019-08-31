@@ -2,9 +2,106 @@ import numpy as np
 from numpy.fft import fft2, ifft2
 import matplotlib.pyplot as plt
 
+import logging
+from tqdm.auto import tqdm
+
 from skimage.transform import AffineTransform, warp
 from scipy.ndimage import fourier_shift
 from scipy.signal import fftconvolve
+
+from tensorflow_transforms import (
+    cross_correlation_tf,
+    phase_correlation_tf,
+    hybrid_correlation_tf,
+)
+
+try:
+    import tensorflow as tf
+
+    tf.device("/gpu:0")
+except:
+    logging.warning("Tensorflow not available, do not use gpu=True")
+
+
+def prepare_correlation_data(data, weights, method="phase", gpu=True):
+    print(data.shape, data.dtype)
+    if method != "cross":
+        if gpu:
+            data = data.astype("complex64")
+            print(data.shape, data.dtype)
+            fftdata = tf.signal.fft2d(data)
+            return fftdata
+        else:
+            return fft2(data)
+    else:
+        if gpu:
+            return tf.convert_to_tensor(data)
+        else:
+            return data
+
+
+def correlate_images(correlation_data, method="phase", gpu=True):
+    correlations = []
+    for image_sequence in tqdm(correlation_data):
+        img1 = image_sequence[0]
+        corr = [
+            correlation(img1, img2, method=method, gpu=gpu)
+            for img2 in image_sequence[1:]
+        ]
+
+        correlations.append(corr)
+    if gpu:
+        correlations = tf.transpose(correlations, [1, 0, 2, 3])
+    else:
+        correlations = np.array(correlations).swapaxes(0, 1)
+
+    max_indexes = []
+    shifts_list = []
+
+    if gpu:
+        argmax = tf.math.argmax
+        max_ = tf.math.reduce_max
+    else:
+        argmax = np.argmax
+        max_ = np.max
+    for transformed_images in correlations:
+        max_indexes.append(argmax([max_(corr) for corr in transformed_images]))
+        shifts_list.append(
+            [translate(corr, method=method, gpu=gpu) for corr in transformed_images]
+        )
+    return max_indexes, shifts_list
+
+
+def correlation(img1, img2, method="phase", gpu=True):
+    if method == "phase":
+        if gpu:
+            correlation_function = phase_correlation_tf
+        else:
+            correlation_function = phase_correlation
+
+    elif method == "hybrid":
+        if gpu:
+            correlation_function = phase_correlation_tf
+        else:
+            correlation_function = phase_correlation
+
+    elif method == "cross":
+        if gpu:
+            correlation_function = cross_correlation_tf
+        else:
+            correlation_function = cross_correlation
+    else:
+        raise ValueError("No correlation method with that name")
+
+    return correlation_function(img1, img2)
+
+
+def translate(corr, method="phase", gpu=True):
+    if method == "cross":
+        translation_function = cross_translation
+    else:
+        translation_function = phase_translation
+    return translation_function(corr)
 
 
 def hybrid_correlation(img1_fft, img2_fft):
@@ -45,26 +142,49 @@ def changespace(x, maxval):
     return (x + half) % maxval - half
 
 
-def phase_translation(corr):
+def phase_translation(corr, gpu=True):
     "Turn phase correlation array into shift x,y"
-    shift = np.unravel_index(corr.argmax(), corr.shape)
+    if gpu:
+        argmax = tf.math.argmax
+        unravel_index = tf.unravel_index
 
+        def flatten(x):
+            return tf.reshape(x, [-1])
+
+    else:
+        argmax = np.argmax
+        unravel_index = np.unravel_index
+        flatten = np.flatten
+
+    shift = unravel_index(argmax(flatten(corr)), corr.shape)
     shift = changespace(shift, corr.shape)
     return shift
 
 
-def cross_translation(corr):
+def cross_translation(corr, gpu=True):
     "Turn phase correlation array into shift x,y"
-    shift = np.unravel_index(corr.argmax(), corr.shape)
-    return shift - np.array(corr.shape) / 2
+    if gpu:
+        argmax = tf.math.argmax
+        unravel_index = tf.unravel_index
+
+        def flatten(x):
+            return tf.reshape(x, [-1])
+
+    else:
+        argmax = np.argmax
+        unravel_index = np.unravel_index
+        flatten = np.flatten
+
+    shift = unravel_index(argmax(flatten(corr)), corr.shape)
+    return shift - np.array(shape) / 2
 
 
-def pad_images(images, pad_scale=1.25):
+def pad_images(images, pad_factor=1.25):
     """Pad images as a function of their size.
     Also calculates a window function, also padded.
     """
     old_shape = np.array(images[0].shape)
-    new_shape = old_shape * pad_scale  # approx
+    new_shape = old_shape * pad_factor  # approx
     padding = ((new_shape - old_shape) / 2).astype(int)
     padding = [(padding[0], padding[0]), (padding[1], padding[1])]
     padded_images = [
@@ -95,12 +215,14 @@ def set_shear_and_scale_ranges(image_shape, shear_steps=5, scale_steps=5, pix=1)
 
 
 def set_transform_matrices(angles, sheares, scales):
+    """Take a list of angles, shearing values and scaling values,
+    and convert them to equivalent affine transformation matrices
+    """
     rotation_matrices = [
         AffineTransform(rotation=np.deg2rad(angle)) for angle in angles
     ]
     shear_matrices = [AffineTransform(shear=shear) for shear in sheares]
     scale_matrices = [AffineTransform(scale=(1, scale)) for scale in scales]
-
     return rotation_matrices, shear_matrices, scale_matrices
 
 
@@ -136,6 +258,8 @@ def transform(
 
 
 def transform_single_image(img, rot_matrix, shear_matrix, scale_matrix, weights=1):
+    """Equivalent of transform, but for a single transformation matrix rather than a list
+    """
     shift_x, shift_y = np.array(img.shape) / 2.0
     tf_shift = AffineTransform(translation=[-shift_y, -shift_x])
     tf_shift_inv = AffineTransform(translation=[shift_y, shift_x])
@@ -146,25 +270,26 @@ def transform_single_image(img, rot_matrix, shear_matrix, scale_matrix, weights=
     )
 
 
-def plot_transformed_images(padded_images, angles, shear_indices, scale_indices, sheares, scales):
+def plot_transformed_images(
+    padded_images, angles, shear_indices, scale_indices, sheares, scales
+):
+    "Apply the best transformation to each image, and plot them on top of each other"
     fig, AX = plt.subplots(ncols=len(padded_images) - 1, squeeze=False)
 
-    for i, (ax, shear_index, scale_index) in enumerate(zip(AX.flatten(), shear_indices, scale_indices)):
+    for i, (ax, shear_index, scale_index) in enumerate(
+        zip(AX.flatten(), shear_indices, scale_indices)
+    ):
         shear, scale = sheares[shear_index], scales[scale_index]
-        angle = angles[0]
         rot_mat, shear_mat, scale_mat = set_transform_matrices(
-        [angle], [shear], [scale]
+            [angles[0]], [shear], [scale]
         )
         img1 = transform_single_image(
             padded_images[0], rot_mat[0], shear_mat[0], scale_mat[0]
         )
 
-        angle = [angles[i + 1]]  # first image and i+1 image
-
         rot_mat, shear_mat, scale_mat = set_transform_matrices(
-            [angle], [shear], [scale]
+            [angles[i + 1]], [shear], [scale]
         )
-
         img2 = transform_single_image(
             padded_images[i + 1], rot_mat[0], shear_mat[0], scale_mat[0]
         )

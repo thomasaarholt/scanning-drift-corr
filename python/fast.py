@@ -6,12 +6,12 @@ from pathlib import Path
 import h5py
 from scipy.ndimage import fourier_shift
 
+
 from transforms import (
-    hybrid_correlation,
-    phase_correlation,
-    cross_correlation,
-    phase_translation,
-    cross_translation,
+    prepare_correlation_data,
+    correlate_images,
+    correlation,
+    translate,
     pad_images,
     set_shear_and_scale_ranges,
     set_transform_matrices,
@@ -21,25 +21,14 @@ from transforms import (
     normalise_max,
 )
 
-pad_scale = 1.1
-steps = 5
-correlation_method = "cross"
+pad_factor = 1.1  # larger than 1, approx 1.25 is good
+steps = 9  # odd, 5,7 is normal
+correlation_method = "phase"  # "phase", "cross", "hybrid"
+gpu = True  # True / False
 shear_steps = steps
 scale_steps = steps
 
-if correlation_method == "phase":
-    correlation_function = phase_correlation
-    translation_function = phase_translation
-elif correlation_method == "hybrid":
-    correlation_function = phase_correlation
-    translation_function = phase_translation
-elif correlation_method == "cross":
-    correlation_function = cross_correlation
-    translation_function = cross_translation
-else:
-    raise ValueError("No correlation method with that name")
-
-test_dataset = "C"
+test_dataset = "A"
 
 if test_dataset == "A":
     import hyperspy.api as hs
@@ -54,7 +43,7 @@ if test_dataset == "A":
     signals = [
         get_haadf(hs.load(str(f))) for f in Path(folder).iterdir() if f.is_file()
     ]
-    images = [s.data for s in signals]
+    images = [s.data.astype("float32") for s in signals]
     angles = [
         float(s.original_metadata.Scan.ScanRotation) * 180 / np.pi for s in signals
     ]
@@ -90,41 +79,51 @@ else:
     print("Specified wrong data?")
 
 images = [normalise_max(img) for img in images]
-padded_images, weights = pad_images(images, pad_scale=pad_scale)
+print("padding images")
+padded_images, weights = pad_images(images, pad_factor=pad_factor)
+print(np.shape(padded_images), shear_steps, scale_steps, padded_images[0].dtype)
+GB = np.round(
+    np.prod(np.shape(padded_images))
+    * shear_steps
+    * scale_steps
+    * padded_images[0].dtype.itemsize
+    / 1e9,
+    2,
+)  # 32 bytes per complex64
+print("Estimating memory usage of {}GB".format(GB))
+
 
 # Set the various sheares, scales, first in terms of range
 sheares, scales = set_shear_and_scale_ranges(
-    padded_images[0].shape, shear_steps=shear_steps, scale_steps=scale_steps, pix=1
+    padded_images[0].shape, shear_steps=shear_steps, scale_steps=scale_steps, pix=2
 )
 # Then in terms of transform matrices
+print("Calculating transform matrices")
 transform_matrices = set_transform_matrices(angles, sheares, scales)
 rotation_matrices, shear_matrices, scale_matrices = transform_matrices
 
 # Scale and shear the masked data
+print("Transforming data")
 data = transform(
     padded_images, rotation_matrices, shear_matrices, scale_matrices, weights=weights
 )
+
+data = data.astype("float32")
+
 data = data.reshape((len(padded_images), -1) + padded_images[0].shape)
 data = data.swapaxes(0, 1)
 
-correlations = []
-for i, image_sequence in enumerate(data):
-    img1 = image_sequence[0]
-    corr = [
-        correlation_function(fft2(weights * img1), fft2(weights * img2))
-        for img2 in image_sequence[1:]
-    ]
-    correlations.append(corr)
+print("Preparing correlation data")
+correlation_data = prepare_correlation_data(
+    data, weights, method=correlation_method, gpu=gpu
+)
 
-correlations2 = np.array(correlations).swapaxes(0, 1)
-
-max_indexes = []
-shifts_list = []
-for corr2 in correlations2:
-    max_indexes.append(np.argmax([np.max(corr) for corr in corr2]))
-    shifts_list.append([translation_function(corr) for corr in corr2])
-
+print("Correlating")
+max_indexes, shifts_list = correlate_images(
+    correlation_data, method=correlation_method, gpu=gpu
+)
 # Plot masked images
+print("Calculating final images")
 data2 = np.array(data).swapaxes(0, 1)
 image_sums = []
 for i, img_array in enumerate(data2[1:]):
@@ -144,12 +143,16 @@ for i, ax in enumerate(np.reshape(AX, np.prod(AX.shape))):
 # Plot whole images
 shear_indices = []
 scale_indices = []
-for i in range(len(images)-1):
-    shear_index, scale_index = np.unravel_index(max_indexes[i], (shear_steps, scale_steps))
+for i in range(len(images) - 1):
+    shear_index, scale_index = np.unravel_index(
+        max_indexes[i], (shear_steps, scale_steps)
+    )
     shear_indices.append(shear_index)
     scale_indices.append(scale_index)
 
-plot_transformed_images(padded_images, angles, shear_indices, scale_indices, sheares, scales)
+plot_transformed_images(
+    padded_images, angles, shear_indices, scale_indices, sheares, scales
+)
 
 # # Loop across 0, numImages - 1
 # for i, ax in enumerate(np.reshape(AX, np.prod(AX.shape))):

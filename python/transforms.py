@@ -22,18 +22,6 @@ except:
     logging.warning("Tensorflow not available, do not use gpu=True")
 
 
-def set_tf_loglevel(level):
-    if level >= logging.FATAL:
-        os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
-    if level >= logging.ERROR:
-        os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
-    if level >= logging.WARNING:
-        os.environ["TF_CPP_MIN_LOG_LEVEL"] = "1"
-    else:
-        os.environ["TF_CPP_MIN_LOG_LEVEL"] = "0"
-    logging.getLogger("tensorflow").setLevel(level)
-
-
 def prepare_correlation_data(data, weights, method="phase", gpu=True):
     if method != "cross":
         if gpu:
@@ -331,7 +319,7 @@ def plot_transformed_images(
 
         ax.imshow(img1 + img2_shift, cmap="viridis")
         ax.axis("off")
-
+    return img1, img2_shift
     # plt.show()
 
 

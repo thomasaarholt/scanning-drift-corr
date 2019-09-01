@@ -86,7 +86,7 @@ else:
     print("Specified wrong data?")
 
 images = [normalise_max(img) for img in images]
-print("padding images")
+print("Padding images")
 padded_images, weights = pad_images(images, pad_factor=pad_factor)
 GB = np.round(
     float(np.prod(np.shape(padded_images)))

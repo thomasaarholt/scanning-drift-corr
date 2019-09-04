@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 
 import logging
 import os
+from time import time
 from tqdm.auto import tqdm
 
 from skimage.transform import AffineTransform, warp
@@ -23,6 +24,7 @@ except:
 
 
 def prepare_correlation_data(data, weights, method="phase", gpu=True):
+    "Turns data into fft of data if necessary for correlation method"
     if method != "cross":
         if gpu:
             data = data.astype("complex64")
@@ -32,7 +34,8 @@ def prepare_correlation_data(data, weights, method="phase", gpu=True):
             return fft2(data)
     else:
         if gpu:
-            return tf.convert_to_tensor(data)
+            data = data.astype("complex64")
+            return data
         else:
             return data
 
@@ -125,7 +128,7 @@ def phase_correlation(img1_fft, img2_fft):
     return np.fft.ifft2(C / np.abs(C)).real
 
 
-def cross_correlation(im1, im2):
+def cross_correlation_old(im1, im2):
     "Perform cross correlation on images in real space"
     # get rid of the averages, otherwise the results are not good
     im1 -= np.mean(im1)
@@ -133,6 +136,51 @@ def cross_correlation(im1, im2):
 
     # calculate the correlation image; note the flipping of the images
     return fftconvolve(im1, im2[::-1, ::-1], mode="same")
+
+
+def cross_correlation(A, B):
+    A -= A.mean()
+    B -= B.mean()
+    return np.real(ifft2(fft2(A) * fft2(B[..., ::-1, ::-1])))
+
+
+def phase_translation(corr, gpu=True):
+    "Turn phase correlation array into shift x,y"
+    if gpu:
+        argmax = tf.math.argmax
+        unravel_index = tf.unravel_index
+
+        def flatten(x):
+            return tf.reshape(x, [-1])
+
+    else:
+
+        def flatten(x):
+            return x.flatten()
+
+        argmax = np.argmax
+        unravel_index = np.unravel_index
+
+    shift = unravel_index(argmax(flatten(corr)), corr.shape)
+    shift = changespace(shift, corr.shape)
+    return shift
+
+
+def changespace(x, maxval):
+    """Shift indices from [0, max] to [-max/2, max/2]
+    Handles both single values and numpy shape tuples
+    """
+    x = np.array(x)
+    maxval = np.array(maxval)
+    half = maxval / 2
+    return (x + half) % maxval - half
+
+
+def cross_translation(corr, gpu=True):
+    "Turn cross correlation array into shift x,y"
+    shift = phase_translation(corr, gpu)
+    shift += 1  # This is different from phase
+    return shift
 
 
 def changespace(x, maxval):
@@ -167,7 +215,7 @@ def phase_translation(corr, gpu=True):
     return shift
 
 
-def cross_translation(corr, gpu=True):
+def cross_translation_old(corr, gpu=True):
     "Turn phase correlation array into shift x,y"
     if gpu:
         argmax = tf.math.argmax
@@ -179,7 +227,9 @@ def cross_translation(corr, gpu=True):
     else:
         argmax = np.argmax
         unravel_index = np.unravel_index
-        flatten = np.flatten
+
+        def flatten(x):
+            return x.flatten()
 
     shift = unravel_index(argmax(flatten(corr)), corr.shape)
     return shift - np.array(corr.shape) / 2
@@ -198,10 +248,8 @@ def pad_images(images, pad_factor=1.25):
     ]
     new_shape = np.array(padded_images[0].shape)
 
-    weights = HanningImage(new_shape)
-
-    # weights = HanningImage(old_shape[0]) * HanningImage(old_shape[1]).T
-    # weights = np.pad(weights, padding, mode="constant", constant_values=0)
+    weights = HanningImage(old_shape)
+    weights = np.pad(weights, padding, mode="constant", constant_values=0)
     return padded_images, weights
 
 

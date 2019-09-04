@@ -3,6 +3,8 @@ import tensorflow as tf
 from tensorflow.math import conj, angle, sqrt, real, reduce_mean as mean
 from tensorflow.signal import ifft2d as ifft2, fft2d as fft2, rfft2d, irfft2d
 
+from time import time
+
 
 def set_tf_loglevel(level):
     if level >= logging.FATAL:
@@ -37,7 +39,7 @@ def phase_correlation_tf(img1_fft, img2_fft):
     return real(ifft2(C / tf.complex(D, D * 0.0)))
 
 
-def cross_correlation_tf(im1, im2):
+def cross_correlation_tf_old(im1, im2):
     "Perform cross correlation on images in real space"
     # get rid of the averages, otherwise the results are not good
     im1 -= mean(im1)
@@ -45,6 +47,13 @@ def cross_correlation_tf(im1, im2):
 
     # calculate the correlation image; note the flipping of the images
     return fftconv(im1, im2[::-1, ::-1], mode="same")
+
+
+def cross_correlation_tf(A, B):
+    A = A - tf.math.reduce_mean(A)
+    B = B - tf.math.reduce_mean(B)
+    R = real(ifft2(fft2(A) * fft2(B[..., ::-1, ::-1])))
+    return R
 
 
 def _centered(arr, newshape):

@@ -110,7 +110,7 @@ def translate(corr, method="phase", gpu=True):
     return translation_function(corr, gpu=gpu)
 
 
-def hybrid_correlation(img1_fft, img2_fft):
+def hybrid_correlation(img1_fft, img2_fft, mean_normalization=False):
     """Unsure if this actually the hybrid correlation Ophus refers to.
     Works on images already in fourier space.
     """
